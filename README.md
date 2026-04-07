@@ -1,13 +1,8 @@
 <div align="center">
 
-```
-EM DESENVOLVIMENTO
-```
-
-=======
 # ⬡ OpenChat
 
-**Interface web local para modelos de linguagem open source via Ollama**
+**Chatbot local para modelos de linguagem open source via Ollama**
 
 [![Java](https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.2-6DB33F?style=flat-square&logo=springboot)](https://spring.io/projects/spring-boot)
@@ -16,7 +11,7 @@ EM DESENVOLVIMENTO
 [![Ollama](https://img.shields.io/badge/Ollama-Local_AI-000000?style=flat-square)](https://ollama.com/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-Uma interface visual completa para conversar com modelos de linguagem rodando localmente.  
+Uma chatbot para conversar com modelos de linguagem rodando localmente.  
 Seus dados ficam no seu hardware. Sem APIs pagas. Sem envio de dados para servidores externos.
 
 </div>
@@ -31,6 +26,7 @@ Seus dados ficam no seu hardware. Sem APIs pagas. Sem envio de dados para servid
 - 📎 **Anexo de arquivos** — envie documentos diretamente no chat
 - 👁 **Suporte a modelos Vision** — envie imagens para modelos multimodais
 - 💭 **Thinking Mode** — visualize o raciocínio de modelos como DeepSeek e Qwen3
+- 🌐 **Busca na web** — pesquisa em tempo real via SearXNG (self-hosted, sem rastreamento)
 - 📌 **Chats fixados** — fixe até 3 conversas importantes no topo da sidebar
 - ✏️ **Renomear conversas** — dê títulos personalizados aos seus chats
 - 🏷️ **Tags automáticas** — identifica modelos Cloud, Vision, Think, Tools e Embedding
@@ -49,6 +45,7 @@ Seus dados ficam no seu hardware. Sem APIs pagas. Sem envio de dados para servid
 | Backend | Java 17 + Spring Boot 3.2 + Spring WebFlux |
 | Banco de dados | PostgreSQL 16 |
 | IA Local | Ollama |
+| Busca Web | SearXNG (self-hosted) |
 | Infraestrutura | Docker + Docker Compose |
 
 ---
@@ -82,26 +79,75 @@ cp docker-compose.override.yml.example docker-compose.override.yml
 
 > Por padrão já funciona sem alterações. O `.override.yml` é para customizações como senha do banco ou porta.
 
-### 3. Baixe um modelo no Ollama
-*Exemplo*:
+### 3. Configure o SearXNG (busca web)
+
+```bash
+# Gere uma secret key
+openssl rand -hex 32
+
+# Crie o arquivo de configuração
+cp searxng-config/settings.yml.example searxng-config/settings.yml
+```
+
+Edite o `searxng-config/settings.yml` e substitua o campo `secret_key` pelo valor gerado:
+
+```yaml
+server:
+  secret_key: "COLE_AQUI_O_OUTPUT_DO_OPENSSL"
+```
+
+> **Nota:** O arquivo `settings.yml` está no `.gitignore` — sua secret key nunca será enviada ao repositório.
+
+### 4. Baixe um modelo no Ollama
+
 ```bash
 ollama pull llama3.2
 ```
 
-**⚠️ Recomendação:** Caso tenha um hardware humilde, é recomendável baixar um modelo cloud
-```bash
-ollama pull qwen3.5:cloud
-```
+> **⚠️ Recomendação:** Caso tenha um hardware humilde, use um modelo menor:
+> ```bash
+> ollama pull qwen2.5:3b
+> ```
 
-Baixe os modelos por aqui -> [Modelos do Ollama](https://ollama.com/search).
+Veja todos os modelos disponíveis em [ollama.com/search](https://ollama.com/search).
 
-### 4. Suba os containers
+### 5. Suba os containers
 
 ```bash
 docker compose up -d
 ```
 
 Aguarde ~30 segundos e acesse `http://localhost:8080`.
+
+---
+
+## 🌐 Busca na Web
+
+O OpenChat integra o **SearXNG** — um meta-buscador open source, self-hosted, sem rastreamento e sem necessidade de chave de API.
+
+### Como funciona
+
+Quando a busca web está ativada, o sistema:
+
+1. Envia a query do usuário ao SearXNG
+2. Coleta os top 5 resultados com título, snippet e URL
+3. Injeta o contexto no prompt enviado ao modelo
+4. Acumula os contextos ao longo da conversa — o modelo não "esquece" buscas anteriores
+
+### Cascata de provedores
+
+Se o SearXNG estiver offline, o sistema tenta automaticamente:
+
+```
+SearXNG (local) → DuckDuckGo HTML → DuckDuckGo Instant Answer
+```
+
+### Como usar
+
+1. Clique no ícone 🌐 na topbar para ativar a busca web
+2. Envie sua mensagem normalmente
+3. O modelo responderá com base nos resultados reais da web
+4. Pergunte *"quais foram as fontes?"* a qualquer momento — o contexto é mantido
 
 ---
 
@@ -123,7 +169,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart ollama
 ```
 
-**Importante no Linux:** é necessário liberar a porta do Ollama no firewall para as redes Docker:
+**Importante no Linux:** libere a porta do Ollama no firewall para as redes Docker:
 
 ```bash
 sudo iptables -I INPUT -s 172.18.0.0/16 -p tcp --dport 11434 -j ACCEPT
@@ -162,6 +208,9 @@ docker compose logs -f
 # Ver logs só do backend
 docker compose logs -f backend
 
+# Ver logs do SearXNG
+docker compose logs -f searxng
+
 # Parar tudo (preserva os dados do banco)
 docker compose down
 
@@ -179,7 +228,7 @@ docker compose up -d --build
 ```
 openchat/
 ├── backend/
-│   ├── src/main/java/com/seunome/ollamachat/
+│   ├── src/main/java/otavio/openchat/
 │   │   ├── config/       # CORS, WebClient
 │   │   ├── controller/   # Chat, History, Models, Files, Memory, Projects
 │   │   ├── service/      # OllamaService, ConversationService, MemoryService, ProjectService
@@ -191,6 +240,9 @@ openchat/
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
+├── searxng-config/
+│   ├── settings.yml          # gitignored — contém sua secret key
+│   └── settings.yml.example  # template para novos colaboradores
 ├── docker-compose.yml
 ├── docker-compose.override.yml.example
 └── README.md
