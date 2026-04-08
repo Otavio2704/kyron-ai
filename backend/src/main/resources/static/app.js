@@ -557,6 +557,31 @@ function filterHistory() {
   renderHistory(term ? allHistory.filter(c => c.title.toLowerCase().includes(term)) : allHistory);
 }
 
+/* ════════════════════════════════════════════════════════════════
+   MUDANÇA 1 — Nova função auxiliar parseDocAttachments
+   Detecta blocos [Conteúdo de "arquivo"]:\n... salvos no banco
+   e os separa do texto limpo, retornando cards para reconstrução visual.
+════════════════════════════════════════════════════════════════ */
+/**
+ * Extrai blocos [Conteúdo de "arquivo"]:\n... do texto salvo,
+ * retornando { cards: [{name}], cleanText } para reconstruir o visual.
+ */
+function parseDocAttachments(text) {
+  if (!text) return { cards: [], cleanText: text || '' };
+  const cards = [];
+  const pattern = /\[Conteúdo de "([^"]+)"\]:\n[\s\S]*?(?=\[Conteúdo de "|$)/g;
+  const cleanText = text.replace(pattern, (_, name) => {
+    cards.push({ name });
+    return '';
+  }).trim();
+  return { cards, cleanText };
+}
+
+/* ════════════════════════════════════════════════════════════════
+   MUDANÇA 2 — loadConversation atualizada
+   - Filtra mensagens role:"tool" (web search context)
+   - Exibe badge discreto com contagem de buscas realizadas
+════════════════════════════════════════════════════════════════ */
 async function loadConversation(id) {
   try {
     const res = await fetch(`${API.BASE}/api/history/${id}`);
@@ -570,11 +595,33 @@ async function loadConversation(id) {
     }
     el.messagesArea.innerHTML = '';
     showChat();
-    (conv.messages || []).forEach(msg => {
-      // Usa o campo thinkingEnabled da mensagem para decidir se mostra pensamento
-      const shouldShowThinking = msg.role === 'assistant' && msg.thinkingEnabled === true;
-      appendMessage(msg.role, msg.content, false, [], shouldShowThinking);
-    });
+
+    // Conta quantas buscas web foram feitas nesta conversa
+    const webSearchCount = (conv.messages || [])
+      .filter(m => m.role === 'tool' && m.content?.startsWith('[WEB_SEARCH_CONTEXT]'))
+      .length;
+
+    // Exibe badge discreto se houve buscas, antes das mensagens
+    if (webSearchCount > 0) {
+      const badge = document.createElement('div');
+      badge.className = 'web-search-history-badge';
+      badge.innerHTML = `
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        ${webSearchCount} busca${webSearchCount > 1 ? 's' : ''} na web realizada${webSearchCount > 1 ? 's' : ''} nesta conversa
+      `;
+      el.messagesArea.appendChild(badge);
+    }
+
+    // Renderiza apenas mensagens user/assistant — ignora role:tool
+    (conv.messages || [])
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .forEach(msg => {
+        const shouldShowThinking = msg.role === 'assistant' && msg.thinkingEnabled === true;
+        appendMessage(msg.role, msg.content, false, [], shouldShowThinking);
+      });
+
     scrollToBottom();
     document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
     document.querySelector(`.history-item[data-id="${id}"]`)?.classList.add('active');
@@ -848,28 +895,65 @@ function renderFinal(textEl, thinking, content) {
   textEl.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
 }
 
+/* ════════════════════════════════════════════════════════════════
+   MUDANÇA 3 — appendMessage atualizada
+   Reconstrói cards visuais de arquivo a partir do texto salvo no banco,
+   em vez de exibir o conteúdo extraído bruto no histórico.
+════════════════════════════════════════════════════════════════ */
 function appendMessage(role, rawContent, streaming, files = [], thinkingWasActive = null) {
   const msg = document.createElement('div');
   msg.className = `message ${role}`;
   const avatarLabel = role === 'user' ? 'Eu' : '⬡';
   const roleLabel   = role === 'user' ? 'Você' : 'Assistente';
 
-  const { thinking, content } = parseStoredMessage(rawContent || '');
+  const { thinking, content: parsedContent } = parseStoredMessage(rawContent || '');
 
-  // Só exibe bloco de pensamento se thinkingWasActive === true
+  // Para mensagens do usuário carregadas do histórico, reconstrói cards de arquivo
+  // em vez de exibir o texto extraído bruto.
+  let displayContent = parsedContent;
+  let restoredCards  = [];
+  if (role === 'user' && !streaming && files.length === 0) {
+    const { cards, cleanText } = parseDocAttachments(parsedContent);
+    restoredCards  = cards;
+    displayContent = cleanText;
+  }
+
   const shouldShowThinking = thinking && (thinkingWasActive === true);
   const thinkHtml = shouldShowThinking
     ? `<details class="thinking-block"><summary>Pensamento</summary><p>${escapeHtml(thinking)}</p></details>`
     : '';
 
-  const rendered = content ? renderMarkdown(content) : '';
+  const rendered = displayContent ? renderMarkdown(displayContent) : '';
 
+  // Arquivos passados diretamente (envio ao vivo)
   const docFiles = files.filter(f => f.type === 'doc');
   const imgFiles = files.filter(f => f.type === 'image');
+
+  // Cards reconstruídos do histórico
+  const restoredHtml = restoredCards.map(f =>
+    `<div class="message-attach-card">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <span class="message-attach-name">${escapeHtml(f.name)}</span>
+    </div>`
+  ).join('');
+
   const attachHtml = [
-    ...docFiles.map(f => `<div class="message-attach-card"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="message-attach-name">${escapeHtml(f.name)}</span></div>`),
-    ...imgFiles.map(f => `<img src="data:image/jpeg;base64,${f.data}" class="message-img-thumb" alt="${escapeHtml(f.name)}" />`),
+    restoredHtml,
+    ...docFiles.map(f =>
+      `<div class="message-attach-card">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span class="message-attach-name">${escapeHtml(f.name)}</span>
+      </div>`),
+    ...imgFiles.map(f =>
+      `<img src="data:image/jpeg;base64,${f.data}" class="message-img-thumb" alt="${escapeHtml(f.name)}" />`),
   ].join('');
+
   const attachSection = attachHtml ? `<div class="message-attachments">${attachHtml}</div>` : '';
 
   msg.innerHTML = `
@@ -882,7 +966,7 @@ function appendMessage(role, rawContent, streaming, files = [], thinkingWasActiv
       </div>
     </div>
   `;
-  if (!streaming && content) msg.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+  if (!streaming && displayContent) msg.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
   el.messagesArea.appendChild(msg);
   scrollToBottom();
   return msg;
