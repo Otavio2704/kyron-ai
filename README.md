@@ -101,12 +101,12 @@ server:
 ### 4. Baixe um modelo no Ollama
 
 ```bash
-ollama pull llama3.2
+ollama pull qwen3.5:9b
 ```
 
-> **⚠️ Recomendação:** Caso tenha um hardware humilde, use um modelo menor:
+> **⚠️ Recomendação:** Caso tenha um hardware humilde, use um modelo cloud:
 > ```bash
-> ollama pull qwen2.5:3b
+> ollama pull qwen3.5:cloud
 > ```
 
 Veja todos os modelos disponíveis em [ollama.com/search](https://ollama.com/search).
