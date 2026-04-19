@@ -26,7 +26,7 @@ public class GeneratedFile {
     private String fileName;
 
     @Column(length = 255)
-    private String filename;  // alias para fileName
+    private String filename;
 
     @Column(length = 500)
     private String filePath;
@@ -75,7 +75,8 @@ public class GeneratedFile {
     @JoinColumn(name = "agent_action_id")
     private AgentAction agentAction;
 
-    // Alias para session (compatibilidade)
+    // ── Alias para session (compatibilidade) ─────────────────────────────────
+
     @Transient
     public CodeSession getSession() {
         return codeSession;
@@ -86,7 +87,8 @@ public class GeneratedFile {
         this.codeSession = session;
     }
 
-    // Alias para getFilename
+    // ── Alias getFilename ─────────────────────────────────────────────────────
+
     public String getFilename() {
         return filename != null ? filename : fileName;
     }
@@ -97,5 +99,10 @@ public class GeneratedFile {
             this.fileName = filename;
         }
     }
-}
 
+    // ── isNewFile — alias explícito para Boolean wrapper ──────────────────────
+
+    public boolean isNewFile() {
+        return Boolean.TRUE.equals(newFile);
+    }
+}

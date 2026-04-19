@@ -22,11 +22,24 @@ public class AgentAction {
     @Column(updatable = false, nullable = false)
     private UUID id;
 
-    @Column(nullable = false, length = 100)
-    private String actionType;
+    @Column(name = "conversation_id")
+    private UUID conversationId;
+
+    @Column(name = "session_id")
+    private UUID sessionId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "action_type", nullable = false, length = 50)
+    private ActionType actionType;
 
     @Column(length = 1000)
     private String description;
+
+    @Column(name = "file_path", length = 500)
+    private String filePath;
+
+    @Column(name = "proposed_content", columnDefinition = "TEXT")
+    private String proposedContent;
 
     @Column(columnDefinition = "TEXT")
     private String parameters;
@@ -34,12 +47,15 @@ public class AgentAction {
     @Column(columnDefinition = "TEXT")
     private String result;
 
-    @Column(length = 50)
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 50)
+    private ActionStatus status;
 
-    @ManyToOne
-    @JoinColumn(name = "conversation_id")
-    private Conversation conversation;
+    @Column(name = "execution_order")
+    private Integer executionOrder;
+
+    @Column(name = "resolved_at")
+    private LocalDateTime resolvedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -48,4 +64,20 @@ public class AgentAction {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    public enum ActionType {
+        CREATE_FILE,
+        EDIT_FILE,
+        DELETE_FILE,
+        RUN_COMMAND,
+        EXPLAIN
+    }
+
+    public enum ActionStatus {
+        PENDING,
+        APPROVED,
+        REJECTED,
+        EXECUTED,
+        FAILED
+    }
 }

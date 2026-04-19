@@ -22,11 +22,15 @@ public class GitHubRepository {
     @Column(updatable = false, nullable = false)
     private UUID id;
 
-    @Column(nullable = false, length = 200)
-    private String repositoryName;
+    /** "owner/repo" — identificador único do repositório */
+    @Column(name = "full_name", nullable = false, length = 300)
+    private String fullName;
 
-    @Column(nullable = false, length = 100)
+    @Column(nullable = false, length = 150)
     private String owner;
+
+    @Column(name = "repo_name", nullable = false, length = 150)
+    private String repoName;
 
     @Column(length = 500)
     private String description;
@@ -37,6 +41,14 @@ public class GitHubRepository {
     @Column(length = 50)
     private String branch;
 
+    /** Token de acesso para repositórios privados */
+    @Column(name = "access_token", length = 500)
+    private String accessToken;
+
+    @Column(name = "is_private")
+    private Boolean isPrivate;
+
+    // Mantém compatibilidade com código que usa isPublic
     @Column(name = "is_public")
     private Boolean isPublic;
 
@@ -50,6 +62,14 @@ public class GitHubRepository {
     @Column(name = "last_indexed_at")
     private LocalDateTime lastIndexedAt;
 
+    /** Conteúdo indexado do repositório para injeção no prompt */
+    @Column(name = "context_index", columnDefinition = "TEXT")
+    private String contextIndex;
+
+    @ManyToOne
+    @JoinColumn(name = "project_id")
+    private Project project;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -57,14 +77,6 @@ public class GitHubRepository {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-    @ManyToOne
-    @JoinColumn(name = "project_id")
-    private Project project;
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Inner Enum
-    // ═══════════════════════════════════════════════════════════════════════════
 
     public enum IndexStatus {
         PENDING,

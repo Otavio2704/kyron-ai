@@ -13,12 +13,14 @@ public interface AgentActionRepository extends JpaRepository<AgentAction, UUID> 
 
     List<AgentAction> findByConversationIdOrderByCreatedAtDesc(UUID conversationId);
 
-    List<AgentAction> findByActionTypeOrderByCreatedAtDesc(String actionType);
+    List<AgentAction> findByConversationIdOrderByExecutionOrderAsc(UUID conversationId);
 
-    List<AgentAction> findByStatusOrderByCreatedAtDesc(String status);
+    List<AgentAction> findByStatusOrderByCreatedAtDesc(AgentAction.ActionStatus status);
 
-    @Query("SELECT a FROM AgentAction a WHERE a.conversation.id = :conversationId AND a.status = :status ORDER BY a.createdAt DESC")
-    List<AgentAction> findByConversationIdAndStatus(UUID conversationId, String status);
+    @Query("SELECT a FROM AgentAction a WHERE a.conversationId = :conversationId AND a.status = :status ORDER BY a.createdAt DESC")
+    List<AgentAction> findByConversationIdAndStatus(UUID conversationId,
+                                                     AgentAction.ActionStatus status);
 
-    boolean existsById(UUID id);
+    long countByConversationIdAndStatus(UUID conversationId,
+                                        AgentAction.ActionStatus status);
 }
