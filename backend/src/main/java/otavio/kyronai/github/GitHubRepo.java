@@ -69,4 +69,10 @@ public class GitHubRepo {
     private LocalDateTime updatedAt;
 
     public enum IndexStatus { PENDING, INDEXING, READY, ERROR }
+
+    // Lombok não gera setIsPrivate() para campos booleanos com prefixo "is"
+    // então adicionamos o setter manualmente
+    public void setIsPrivate(boolean isPrivate) {
+        this.isPrivate = isPrivate;
+    }
 }

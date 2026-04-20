@@ -89,11 +89,11 @@ copy_file "$OUTPUTS/backend/src/main/java/otavio/kyronai/memory/MemoryController
 copy_file "$OUTPUTS/backend/src/main/java/otavio/kyronai/memory/MemoryRepository.java" "$MEMORY_DIR/MemoryRepository.java"
 copy_file "$OUTPUTS/backend/src/main/java/otavio/kyronai/memory/MemoryService.java" "$MEMORY_DIR/MemoryService.java"
 
-# ── MODEL ────────────────────────────────────────────────────────
-MODEL_DIR="$BASE_PATH/model"
-echo "→ Copiando Model..."
-copy_file "$OUTPUTS/backend/src/main/java/otavio/kyronai/model/ModelCapabilities.java" "$MODEL_DIR/ModelCapabilities.java"
-copy_file "$OUTPUTS/backend/src/main/java/otavio/kyronai/model/ModelController.java" "$MODEL_DIR/ModelController.java"
+# ── MODELS (plural — pacote correto) ─────────────────────────────
+MODELS_DIR="$BASE_PATH/models"
+echo "→ Copiando Models..."
+copy_file "$OUTPUTS/backend/src/main/java/otavio/kyronai/models/ModelCapabilities.java" "$MODELS_DIR/ModelCapabilities.java"
+copy_file "$OUTPUTS/backend/src/main/java/otavio/kyronai/models/ModelController.java" "$MODELS_DIR/ModelController.java"
 
 # ── OLLAMA ───────────────────────────────────────────────────────
 OLLAMA_DIR="$BASE_PATH/ollama"
