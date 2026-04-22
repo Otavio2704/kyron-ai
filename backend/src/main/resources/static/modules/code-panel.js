@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════
-   CODE PANEL - Painel de código com preview e editor (TRUNCADO - ver frontend para versão completa)
+   CODE PANEL - Painel de código com preview e editor
 ════════════════════════════════════════════════════════════════ */
 
 async function loadCodeSession() {
@@ -32,7 +32,7 @@ function closeCodePanel() {
   document.body.classList.remove('code-panel-open');
 }
 
-globalThis.openCodePanelFromBanner = async function () {
+window.openCodePanelFromBanner = async function () {
   if (!state.conversationId) return;
   if (!state.codeSession?.files?.length) await loadCodeSession();
   if (!state.codeSession?.files?.length) return;
@@ -78,8 +78,8 @@ function setupCodePanelResize() {
     document.body.classList.remove('code-panel-resizing');
     const current = Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--code-panel-w'), 10);
     if (Number.isFinite(current)) localStorage.setItem(storageKey, String(current));
-    globalThis.removeEventListener('pointermove', onMove);
-    globalThis.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
   };
 
   handle.addEventListener('pointerdown', (ev) => {
@@ -89,11 +89,11 @@ function setupCodePanelResize() {
     startWidth = Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--code-panel-w'), 10) || 680;
     document.body.classList.add('code-panel-resizing');
     handle.setPointerCapture?.(ev.pointerId);
-    globalThis.addEventListener('pointermove', onMove);
-    globalThis.addEventListener('pointerup', onUp, { once: true });
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
   });
 
-  globalThis.addEventListener('resize', () => {
+  window.addEventListener('resize', () => {
     if (!isDesktop()) return;
     const current = Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue('--code-panel-w'), 10) || 680;
     applyWidth(current, false);
@@ -119,7 +119,7 @@ function renderTabBar() {
   `;
 }
 
-globalThis.switchCodeTab = function (tab) {
+window.switchCodeTab = function (tab) {
   activeTab = tab;
   renderTabBar();
 
@@ -155,9 +155,15 @@ function renderPreviewPane() {
 
     const cdnScripts = [];
     if (needsReact) {
-      cdnScripts.push('  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>');
-      cdnScripts.push('  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>');
-      cdnScripts.push('  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>');
+      cdnScripts.push('  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>');
+      cdnScripts.push('  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>');
+      cdnScripts.push('  <script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>');
+    }
+    if (needsVue) {
+      cdnScripts.push('  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"><\/script>');
+    }
+    if (needsAlpine) {
+      cdnScripts.push('  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"><\/script>');
     }
 
     if (cdnScripts.length > 0) {
@@ -182,14 +188,14 @@ function renderPreviewPane() {
       const isJsx = f.extension === 'jsx' || f.extension === 'tsx';
 
       if (isJsx && needsReact) {
-        const tag = `<script type="text/babel">/* ${f.fileName} */\n${scriptContent}</script>`;
+        const tag = `<script type="text/babel">/* ${f.fileName} */\n${scriptContent}<\/script>`;
         if (html.includes('</body>')) {
           html = html.replace('</body>', tag + '</body>');
         } else {
           html = html + tag;
         }
       } else {
-        const tag = `<script>/* ${f.fileName} */\n${scriptContent}</script>`;
+        const tag = `<script>/* ${f.fileName} */\n${scriptContent}<\/script>`;
         if (html.includes('</body>')) {
           html = html.replace('</body>', tag + '</body>');
         } else {
@@ -248,8 +254,16 @@ function renderPreviewPane() {
             <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
           </svg>
         </div>
-        <p class="preview-no-html-title">${files.length} arquivo${files.length !== 1 ? 's' : ''}</p>
-        <p class="preview-no-html-sub">Prévia disponível para projetos com HTML.</p>
+        <p class="preview-no-html-title">${files.length} arquivo${files.length !== 1 ? 's' : ''} gerado${files.length !== 1 ? 's' : ''}</p>
+        <p class="preview-no-html-sub">Prévia disponível para projetos com HTML.<br/>Selecione um arquivo na aba Código para visualizar.</p>
+        <div class="preview-file-chips">
+          ${files.map(f => `
+            <div class="preview-file-chip" onclick="switchCodeTab('code'); setTimeout(() => openFileById('${f.id}'), 50)">
+              <span>${getFileIcon(f.extension || '')}</span>
+              <span>${escapeHtml(f.fileName)}</span>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
   }
@@ -295,12 +309,16 @@ function renderTreeNode(node, depth) {
     .forEach(([name, val]) => {
       const f = val._file;
       const ext = f.extension || '';
+      const badge = f.newFile
+        ? '<span class="tree-badge new">N</span>'
+        : `<span class="tree-badge updated">v${f.version}</span>`;
       const active = f.id === currentFileId ? ' active' : '';
       html += `
         <div class="tree-file${active}" style="padding-left:${indent + 8}px"
              data-file-id="${f.id}" onclick="openFileById('${f.id}')">
           <span class="tree-file-icon">${getFileIcon(ext)}</span>
           <span class="tree-file-name" title="${escapeHtml(f.filePath)}">${escapeHtml(name)}</span>
+          ${badge}
         </div>
       `;
     });
@@ -308,7 +326,7 @@ function renderTreeNode(node, depth) {
   return html;
 }
 
-globalThis.openFileById = function (fileId) {
+window.openFileById = function (fileId) {
   const file = state.codeSession?.files?.find(f => f.id === fileId);
   if (file) openFileInEditor(file);
 };
@@ -338,6 +356,50 @@ function renderEditorContent(content, ext) {
       <code class="hljs code-lines-col">${codeLines}</code>
     </div>
   `;
+}
+
+function toggleDiffView() {
+  const file = state.codeSession?.files?.find(f => f.id === currentFileId);
+  if (!file || !file.previousContent) return;
+
+  showingDiff = !showingDiff;
+  el.codeDiffToggle.textContent = showingDiff ? 'Ver Arquivo' : 'Ver Diff';
+
+  if (showingDiff) {
+    renderDiffView(file.previousContent, file.content);
+  } else {
+    renderEditorContent(file.content, file.extension);
+  }
+}
+
+function renderDiffView(oldContent, newContent) {
+  const oldLines = oldContent.split('\n');
+  const newLines = newContent.split('\n');
+
+  let html = '<div class="diff-view">';
+
+  const oldSet = new Set(oldLines);
+  const newSet = new Set(newLines);
+  const addedSet = new Set();
+
+  newLines.forEach((line, i) => {
+    if (!oldSet.has(line)) addedSet.add(i);
+  });
+
+  let lineNum = 1;
+  for (let i = 0; i < newLines.length; i++) {
+    const line = newLines[i];
+    const isAdded = addedSet.has(i);
+    const cls = isAdded ? 'diff-added' : '';
+    html += `<div class="diff-line ${cls}">
+      <span class="diff-line-num">${lineNum++}</span>
+      <span class="diff-prefix">${isAdded ? '+' : ' '}</span>
+      <span class="diff-content">${escapeHtml(line)}</span>
+    </div>`;
+  }
+
+  html += '</div>';
+  el.codeEditorContent.innerHTML = html;
 }
 
 async function downloadCurrentFile() {
