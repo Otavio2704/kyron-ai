@@ -218,7 +218,6 @@ async function togglePin(id) {
 function newConversation() {
   state.conversationId = null;
   state.codeSession = null;
-  state.pendingActions = [];
   state.inlinePreviews = {};
   state.nextInlinePreviewId = 0;
   el.messagesArea.innerHTML = '';
@@ -227,7 +226,6 @@ function newConversation() {
   clearAttachPreview();
   showWelcome();
   closeCodePanel();
-  el.agentActionsPanel.hidden = true;
   document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
   if (window.innerWidth <= 768) el.sidebar.classList.remove('open');
 }

@@ -149,14 +149,6 @@ async function loadConversation(id) {
         renderPreviewPane();
       }
     }
-
-    if (state.agentModeEnabled) {
-      const actRes = await fetch(`${API.BASE}/api/agent/actions/${id}`);
-      if (actRes.ok) {
-        const actions = await actRes.json();
-        renderAgentActions(actions);
-      }
-    }
   } catch (err) {
     console.error('Erro ao carregar conversa:', err);
   }
@@ -257,7 +249,6 @@ async function togglePin(id) {
 function newConversation() {
   state.conversationId = null;
   state.codeSession = null;
-  state.pendingActions = [];
   state.inlinePreviews = {};
   state.nextInlinePreviewId = 0;
   el.messagesArea.innerHTML = '';
@@ -266,7 +257,6 @@ function newConversation() {
   clearAttachPreview();
   showWelcome();
   closeCodePanel();
-  el.agentActionsPanel.hidden = true;
   document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
   if (window.innerWidth <= 768) el.sidebar.classList.remove('open');
 }

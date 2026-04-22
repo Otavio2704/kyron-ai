@@ -1,6 +1,6 @@
 /* ════════════════════════════════════════════════════════════════
-   Kyron AI — app.js
-   Inclui: Modo Código, Modo Agente, Diff Visual, Conector GitHub
+  Kytrionyx AI — app.js
+  Inclui: Modo Código, Diff Visual, Conector GitHub
 ════════════════════════════════════════════════════════════════ */
 const API = { BASE: 'http://localhost:8080' };
 
@@ -14,7 +14,6 @@ const state = {
   thinkingMode:     false,
   webSearchEnabled: false,
   codeModeEnabled:  false,
-  agentModeEnabled: false,
   capabilities:     null,
   pendingFiles:     [],
   abortController:  null,
@@ -706,7 +705,7 @@ function notifyCodeGenerated() {
 
   // Se a aba não está visível, mostra notificação
   if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-    const notification = new Notification('Kyron AI - Código Pronto! 🎉', {
+    const notification = new Notification('Kytrionyx AI - Código Pronto! 🎉', {
       body: 'Seu código foi gerado com sucesso. Clique para voltar ao chat.',
       icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Cpolygon points="50,5 93,27.5 93,72.5 50,95 7,72.5 7,27.5" fill="%2310a37f"/%3E%3Ctext x="50" y="67" font-size="48" text-anchor="middle" fill="%23FFFFFF" font-family="system-ui" font-weight="bold"%3E💬%3C/text%3E%3C/svg%3E',
       tag: 'kyron-code-ready',
@@ -1154,7 +1153,7 @@ async function downloadProjectZip() {
     const res = await fetch(`${API.BASE}/api/code/session/${state.conversationId}/download/zip`);
     if (!res.ok) return;
     const blob = await res.blob();
-    triggerDownload(blob, `kyronai-${state.conversationId.slice(0, 8)}.zip`);
+    triggerDownload(blob, `kytrionyx-${state.conversationId.slice(0, 8)}.zip`);
   } catch (err) {
     console.error('Erro ao baixar ZIP:', err);
   }

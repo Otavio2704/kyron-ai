@@ -55,7 +55,6 @@ async function sendMessage() {
     images,
     webSearch: state.webSearchEnabled,
     codeMode: state.codeModeEnabled,
-    agentMode: state.agentModeEnabled,
     githubRepoId: state.activeGithubRepo?.id ?? null,
     ...(state.activeProjectId && { projectId: state.activeProjectId }),
     ...(!isNew && state.conversationId && { conversationId: state.conversationId }),
@@ -86,6 +85,7 @@ async function sendMessage() {
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop();
+      let pendingData = null;
 
       const flushEvent = async (evName, data) => {
         if (evName === 'conversation-id') {
@@ -118,16 +118,6 @@ async function sendMessage() {
               pendingCodeFilesPromise = null;
             });
           await pendingCodeFilesPromise;
-          return;
-        }
-
-        if (evName === 'agent-actions' && data.trim()) {
-          try {
-            const actions = JSON.parse(data.trim());
-            renderAgentActions(actions);
-          } catch (e) {
-            console.error('Erro ao parsear ações do agente:', e);
-          }
           return;
         }
 
@@ -179,19 +169,30 @@ async function sendMessage() {
       for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('event:')) {
-          if (currentEvent !== '') {
-            // flush previous
+          if (pendingData !== null) {
+            await flushEvent(currentEvent, pendingData);
+            pendingData = null;
           }
           currentEvent = trimmed.slice(6).trim();
           continue;
         }
         if (line.startsWith('data:')) {
-          // accumulate data
+          const raw = line.slice(5);
+          pendingData = pendingData === null ? raw : pendingData + '\n' + raw;
           continue;
         }
         if (trimmed === '') {
-          // event end
+          if (pendingData !== null) {
+            await flushEvent(currentEvent, pendingData);
+            pendingData = null;
+          }
+          currentEvent = '';
         }
+      }
+
+      if (pendingData !== null) {
+        await flushEvent(currentEvent, pendingData);
+        pendingData = null;
       }
     }
 

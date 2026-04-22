@@ -1,6 +1,6 @@
 /* ════════════════════════════════════════════════════════════════
-   Kyron AI — app.js
-   Inclui: Modo Código, Modo Agente, Diff Visual, Conector GitHub
+  Kytrionyx AI — app.js
+   Inclui: Modo Código, Diff Visual, Conector GitHub
 ════════════════════════════════════════════════════════════════ */
 const API = { BASE: 'http://localhost:8080' };
 
@@ -14,7 +14,6 @@ const state = {
   thinkingMode:     false,
   webSearchEnabled: false,
   codeModeEnabled:  false,
-  agentModeEnabled: false,
   capabilities:     null,
   pendingFiles:     [],
   abortController:  null,
@@ -22,129 +21,12 @@ const state = {
   activeProjectName:'',
   activeGithubRepo: null,
   codeSession:      null,
-  pendingActions:   [],
   inlinePreviews:   {},
   nextInlinePreviewId: 0,
-  // File System Agent
-  fsRootPath:       null,   // pasta selecionada pelo usuário
 };
 
 const $ = id => document.getElementById(id);
 let el = {};
-
-const FsAgent = (() => {
-  let rootHandle = null;
-  let rootPath = null;
-  const listeners = new Set();
-
-  const notify = () => {
-    listeners.forEach(cb => {
-      try { cb(rootPath); } catch (_) { /* ignore listener error */ }
-    });
-  };
-
-  const sanitizeRelativePath = (relativePath) => {
-    const clean = String(relativePath || '')
-      .replace(/\\\\/g, '/')
-      .replace(/^\/+/, '')
-      .trim();
-    if (!clean || clean.includes('..')) throw new Error('caminho inválido');
-    return clean;
-  };
-
-  const resolveParentDirectory = async (relativePath, create) => {
-    if (!rootHandle) throw new Error('pasta não selecionada');
-    const clean = sanitizeRelativePath(relativePath);
-    const parts = clean.split('/').filter(Boolean);
-    if (!parts.length) throw new Error('caminho inválido');
-
-    let dir = rootHandle;
-    for (const part of parts.slice(0, -1)) {
-      dir = await dir.getDirectoryHandle(part, { create });
-    }
-
-    return { dir, fileName: parts[parts.length - 1], clean };
-  };
-
-  return {
-    isSupported() {
-      return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
-    },
-
-    onRootChange(cb) {
-      if (typeof cb === 'function') listeners.add(cb);
-      return () => listeners.delete(cb);
-    },
-
-    hasRoot() {
-      return Boolean(rootHandle);
-    },
-
-    getRootPath() {
-      return rootPath;
-    },
-
-    async selectRoot() {
-      if (!this.isSupported()) return { ok: false, reason: 'unsupported' };
-      try {
-        const handle = await window.showDirectoryPicker();
-        rootHandle = handle;
-        rootPath = handle?.name || 'pasta-selecionada';
-        notify();
-        return { ok: true, path: rootPath };
-      } catch (err) {
-        if (err?.name === 'AbortError') return { ok: false, reason: 'cancelled' };
-        return { ok: false, reason: err?.message || 'erro ao selecionar pasta' };
-      }
-    },
-
-    clearRoot() {
-      rootHandle = null;
-      rootPath = null;
-      notify();
-    },
-
-    async verifyPermission() {
-      if (!rootHandle) return false;
-      try {
-        const options = { mode: 'readwrite' };
-        if ((await rootHandle.queryPermission(options)) === 'granted') return true;
-        return (await rootHandle.requestPermission(options)) === 'granted';
-      } catch (_) {
-        return false;
-      }
-    },
-
-    async writeFile(relativePath, content) {
-      try {
-        const hasPermission = await this.verifyPermission();
-        if (!hasPermission) return { ok: false, reason: 'permissão negada' };
-
-        const { dir, fileName, clean } = await resolveParentDirectory(relativePath, true);
-        const fileHandle = await dir.getFileHandle(fileName, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(String(content ?? ''));
-        await writable.close();
-        return { ok: true, path: clean };
-      } catch (err) {
-        return { ok: false, reason: err?.message || 'erro ao salvar arquivo' };
-      }
-    },
-
-    async deleteFile(relativePath) {
-      try {
-        const hasPermission = await this.verifyPermission();
-        if (!hasPermission) return { ok: false, reason: 'permissão negada' };
-
-        const { dir, fileName, clean } = await resolveParentDirectory(relativePath, false);
-        await dir.removeEntry(fileName, { recursive: false });
-        return { ok: true, path: clean };
-      } catch (err) {
-        return { ok: false, reason: err?.message || 'erro ao remover arquivo' };
-      }
-    },
-  };
-})();
 
 function initRefs() {
   el = {
@@ -233,7 +115,6 @@ function initRefs() {
     btnAttach:            $('btn-attach'),
     btnWebSearch:         $('btn-web-search'),
     btnCodeMode:          $('btn-code-mode'),
-    btnAgentMode:         $('btn-agent-mode'),
     btnGithub:            $('btn-github'),
     fileInput:            $('file-input'),
     attachPreview:        $('attach-preview'),
@@ -245,8 +126,6 @@ function initRefs() {
     codeEditorFilename:   $('code-editor-filename'),
     codePanelDownloadFile:$('code-panel-download-file'),
     codeDiffToggle:       $('code-diff-toggle'),
-    agentActionsPanel:    $('agent-actions-panel'),
-    agentActionsList:     $('agent-actions-list'),
     githubBackdrop:       $('github-backdrop'),
     githubModalClose:     $('github-modal-close'),
     githubRepoInput:      $('github-repo-input'),
@@ -264,12 +143,6 @@ function initRefs() {
     codePanelTabs:        $('code-panel-tabs'),
     codePanelPreview:     $('code-panel-preview'),
     codePanelResizeHandle:$('code-panel-resize-handle'),
-    // File System Agent
-    agentFsBar:           $('agent-fs-bar'),
-    agentFsPath:          $('agent-fs-path'),
-    btnAgentFsSelect:     $('btn-agent-fs-select'),
-    btnAgentFsClear:      $('btn-agent-fs-clear'),
-    agentFsUnsupported:   $('agent-fs-unsupported'),
   };
 }
 
@@ -282,7 +155,6 @@ async function init() {
   setupCodePanelResize();
   configureMarked();
   loadPreferences();
-  setupFsAgent();
   await Promise.all([loadModels(), loadHistory(), loadProjects()]);
   setupSectionToggles();
 }
@@ -488,24 +360,9 @@ function setupEventListeners() {
 
   el.btnCodeMode.addEventListener('click', () => {
     state.codeModeEnabled = !state.codeModeEnabled;
-    if (state.codeModeEnabled && state.agentModeEnabled) {
-      state.agentModeEnabled = false;
-      el.btnAgentMode.classList.remove('active');
-    }
     el.btnCodeMode.classList.toggle('active', state.codeModeEnabled);
     el.btnCodeMode.title = state.codeModeEnabled ? 'Modo Código ativo' : 'Ativar Modo Código';
     if (state.codeModeEnabled && state.conversationId) loadCodeSession();
-  });
-
-  el.btnAgentMode.addEventListener('click', () => {
-    state.agentModeEnabled = !state.agentModeEnabled;
-    if (state.agentModeEnabled && state.codeModeEnabled) {
-      state.codeModeEnabled = false;
-      el.btnCodeMode.classList.remove('active');
-    }
-    el.btnAgentMode.classList.toggle('active', state.agentModeEnabled);
-    el.btnAgentMode.title = state.agentModeEnabled ? 'Modo Agente ativo' : 'Ativar Modo Agente';
-    updateFsBarVisibility();
   });
 
   el.btnGithub.addEventListener('click', openGithubModal);
@@ -706,7 +563,7 @@ function notifyCodeGenerated() {
 
   // Se a aba não está visível, mostra notificação
   if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
-    const notification = new Notification('Kyron AI - Código Pronto! 🎉', {
+    const notification = new Notification('Kytrionyx AI - Código Pronto! 🎉', {
       body: 'Seu código foi gerado com sucesso. Clique para voltar ao chat.',
       icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Cpolygon points="50,5 93,27.5 93,72.5 50,95 7,72.5 7,27.5" fill="%2310a37f"/%3E%3Ctext x="50" y="67" font-size="48" text-anchor="middle" fill="%23FFFFFF" font-family="system-ui" font-weight="bold"%3E💬%3C/text%3E%3C/svg%3E',
       tag: 'kyron-code-ready',
@@ -1154,7 +1011,7 @@ async function downloadProjectZip() {
     const res = await fetch(`${API.BASE}/api/code/session/${state.conversationId}/download/zip`);
     if (!res.ok) return;
     const blob = await res.blob();
-    triggerDownload(blob, `kyronai-${state.conversationId.slice(0, 8)}.zip`);
+    triggerDownload(blob, `kytrionyx-${state.conversationId.slice(0, 8)}.zip`);
   } catch (err) {
     console.error('Erro ao baixar ZIP:', err);
   }
@@ -1167,281 +1024,6 @@ function triggerDownload(blob, filename) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-/* ════════════════════════════════════════════════════════════════
-   FILE SYSTEM AGENT — Integração com File System Access API
-════════════════════════════════════════════════════════════════ */
-
-function setupFsAgent() {
-  if (!FsAgent.isSupported()) {
-    // Browser não suporta — mostra aviso e esconde controles
-    if (el.agentFsUnsupported) el.agentFsUnsupported.hidden = false;
-    if (el.btnAgentFsSelect)   el.btnAgentFsSelect.disabled = true;
-    return;
-  }
-
-  // Callback quando a pasta muda
-  FsAgent.onRootChange(path => {
-    state.fsRootPath = path;
-    renderFsBar();
-  });
-
-  // Botão selecionar pasta
-  el.btnAgentFsSelect?.addEventListener('click', async () => {
-    const result = await FsAgent.selectRoot();
-    if (result.ok) {
-      showFsToast(`Pasta conectada: ${result.path}`, 'success');
-    } else if (result.reason !== 'cancelled') {
-      showFsToast(`Erro ao acessar pasta: ${result.reason}`, 'error');
-    }
-  });
-
-  // Botão limpar pasta
-  el.btnAgentFsClear?.addEventListener('click', () => {
-    FsAgent.clearRoot();
-    showFsToast('Pasta desconectada.', 'info');
-  });
-
-  renderFsBar();
-}
-
-function updateFsBarVisibility() {
-  if (!el.agentFsBar) return;
-  el.agentFsBar.hidden = !state.agentModeEnabled;
-}
-
-function renderFsBar() {
-  if (!el.agentFsBar) return;
-  const hasRoot = FsAgent.hasRoot();
-  const path    = FsAgent.getRootPath();
-
-  if (el.agentFsPath) {
-    el.agentFsPath.textContent = hasRoot
-      ? path
-      : 'Nenhuma pasta selecionada';
-    el.agentFsPath.classList.toggle('connected', hasRoot);
-  }
-
-  if (el.btnAgentFsSelect) {
-    el.btnAgentFsSelect.textContent = hasRoot ? '↺ Trocar pasta' : 'Selecionar pasta';
-  }
-
-  if (el.btnAgentFsClear) {
-    el.btnAgentFsClear.hidden = !hasRoot;
-  }
-
-  // Atualiza indicador no botão do agente na toolbar
-  el.btnAgentMode?.classList.toggle('fs-connected', hasRoot);
-}
-
-function showFsToast(message, type = 'info') {
-  const existing = document.querySelector('.fs-toast');
-  if (existing) existing.remove();
-
-  const toast = document.createElement('div');
-  toast.className = `fs-toast fs-toast--${type}`;
-  toast.innerHTML = `
-    <span class="fs-toast-icon">${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</span>
-    <span>${escapeHtml(message)}</span>
-  `;
-  document.body.appendChild(toast);
-
-  requestAnimationFrame(() => toast.classList.add('visible'));
-  setTimeout(() => {
-    toast.classList.remove('visible');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
-
-/* ════════════════════════════════════════════════════════════════
-   MODO AGENTE — Cards de aprovação com escrita local
-════════════════════════════════════════════════════════════════ */
-
-function renderAgentActions(actions) {
-  state.pendingActions = actions.filter(a => a.status === 'PENDING');
-  if (state.pendingActions.length === 0) {
-    el.agentActionsPanel.hidden = true;
-    return;
-  }
-
-  const fsAvailable = FsAgent.isSupported() && FsAgent.hasRoot();
-
-  el.agentActionsPanel.hidden = false;
-  el.agentActionsList.innerHTML = state.pendingActions.map(action => {
-    const needsFs = ['CREATE_FILE', 'EDIT_FILE', 'DELETE_FILE'].includes(action.actionType);
-    const fsWarn  = needsFs && !fsAvailable
-      ? `<div class="agent-action-fs-warn">
-           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-             <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-             <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-           </svg>
-           Selecione uma pasta para salvar localmente
-         </div>`
-      : '';
-
-    return `
-      <div class="agent-action-card" data-action-id="${action.id}">
-        <div class="agent-action-header">
-          <span class="agent-action-type agent-action-type-${action.actionType.toLowerCase()}">
-            ${getActionTypeIcon(action.actionType)} ${action.actionType.replace('_', ' ')}
-          </span>
-          ${action.filePath ? `<span class="agent-action-path">${escapeHtml(action.filePath)}</span>` : ''}
-          ${fsAvailable && needsFs
-            ? `<span class="agent-action-fs-badge">
-                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                   <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
-                 </svg>
-                 ${escapeHtml(FsAgent.getRootPath())}
-               </span>`
-            : ''}
-        </div>
-        <div class="agent-action-desc">${escapeHtml(action.description || '')}</div>
-        ${fsWarn}
-        ${action.proposedContent ? `
-          <details class="agent-action-preview">
-            <summary>Ver conteúdo proposto</summary>
-            <pre class="agent-action-code"><code>${escapeHtml(action.proposedContent.slice(0, 500))}${action.proposedContent.length > 500 ? '\n...' : ''}</code></pre>
-          </details>
-        ` : ''}
-        <div class="agent-action-btns">
-          <button class="btn-agent-reject" onclick="rejectAgentAction('${action.id}')">
-            ✕ Rejeitar
-          </button>
-          <button class="btn-agent-approve" onclick="approveAgentAction('${action.id}')">
-            ✓ Aprovar${fsAvailable && needsFs ? ' e salvar' : ''}
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function getActionTypeIcon(type) {
-  const icons = {
-    CREATE_FILE: '📄', EDIT_FILE: '✏️', DELETE_FILE: '🗑️',
-    RUN_COMMAND: '⚡', EXPLAIN: '💡'
-  };
-  return icons[type] || '⚙️';
-}
-
-window.approveAgentAction = async function(actionId) {
-  const card = document.querySelector(`.agent-action-card[data-action-id="${actionId}"]`);
-  if (card) card.classList.add('processing');
-
-  try {
-    const fileActionTypes = ['CREATE_FILE', 'EDIT_FILE', 'DELETE_FILE'];
-    const pendingAction = state.pendingActions.find(action => action.id === actionId);
-    const needsLocalWrite = Boolean(pendingAction && fileActionTypes.includes(pendingAction.actionType));
-
-    if (needsLocalWrite && !FsAgent.isSupported()) {
-      if (card) card.classList.remove('processing');
-      showFsToast('Seu navegador não suporta acesso local de arquivos. Use um navegador compatível com File System Access API.', 'error');
-      return;
-    }
-
-    if (needsLocalWrite && !FsAgent.hasRoot()) {
-      const selected = await FsAgent.selectRoot();
-      if (!selected?.ok) {
-        if (card) card.classList.remove('processing');
-        showFsToast('Selecione uma pasta para permitir que o agente crie arquivos localmente.', 'error');
-        return;
-      }
-    }
-
-    // Para ações de arquivo, só aprova no backend após escrita local com sucesso
-    if (needsLocalWrite) {
-      const targetPath = pendingAction?.filePath;
-      if (!targetPath) {
-        if (card) card.classList.remove('processing');
-        showFsToast('Ação sem caminho de arquivo. Não foi possível executar localmente.', 'error');
-        return;
-      }
-
-      const permitted = await FsAgent.verifyPermission();
-      if (!permitted) {
-        if (card) card.classList.remove('processing');
-        setCardFsStatus(card, 'error', 'permissão negada');
-        showFsToast('Permissão de escrita negada. Selecione a pasta novamente.', 'error');
-        return;
-      }
-
-      const fsResult = pendingAction.actionType === 'DELETE_FILE'
-        ? await FsAgent.deleteFile(targetPath)
-        : await FsAgent.writeFile(targetPath, pendingAction.proposedContent || '');
-
-      if (!fsResult?.ok) {
-        if (card) card.classList.remove('processing');
-        setCardFsStatus(card, 'error', fsResult?.reason || 'erro desconhecido');
-        showFsToast(`Não foi possível salvar localmente: ${fsResult?.reason || 'erro desconhecido'}`, 'error');
-        return;
-      }
-
-      setCardFsStatus(card, 'saved', targetPath);
-      showFsToast(`${targetPath} salvo em ${FsAgent.getRootPath()}`, 'success');
-    }
-
-    // 1. Aprova no backend (após execução local para ações de arquivo)
-    const res = await fetch(`${API.BASE}/api/agent/actions/${actionId}/approve`, { method: 'POST' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await res.json();
-
-    // 3. Atualiza UI do card
-    if (card) {
-      card.classList.remove('processing');
-      card.classList.add('approved');
-      const btnsEl = card.querySelector('.agent-action-btns');
-      if (btnsEl) {
-        btnsEl.innerHTML = needsLocalWrite
-          ? `<span class="agent-status-badge approved">✓ Executado e salvo localmente</span>`
-          : `<span class="agent-status-badge approved">✓ Executado</span>`;
-      }
-      setTimeout(() => card.remove(), 2000);
-    }
-
-    state.pendingActions = state.pendingActions.filter(a => a.id !== actionId);
-    if (state.pendingActions.length === 0) {
-      setTimeout(() => { el.agentActionsPanel.hidden = true; }, 2100);
-    }
-  } catch (err) {
-    console.error('Erro ao aprovar ação:', err);
-    if (card) card.classList.remove('processing');
-    showFsToast(`Erro: ${err.message}`, 'error');
-  }
-};
-
-window.rejectAgentAction = async function(actionId) {
-  const card = document.querySelector(`.agent-action-card[data-action-id="${actionId}"]`);
-  try {
-    await fetch(`${API.BASE}/api/agent/actions/${actionId}/reject`, { method: 'POST' });
-    if (card) {
-      card.classList.add('rejected');
-      card.querySelector('.agent-action-btns').innerHTML =
-        '<span class="agent-status-badge rejected">✕ Rejeitado</span>';
-      setTimeout(() => card.remove(), 1200);
-    }
-    state.pendingActions = state.pendingActions.filter(a => a.id !== actionId);
-    if (state.pendingActions.length === 0) {
-      setTimeout(() => { el.agentActionsPanel.hidden = true; }, 1300);
-    }
-  } catch (err) {
-    console.error('Erro ao rejeitar ação:', err);
-  }
-};
-
-/** Exibe inline no card o status da escrita local */
-function setCardFsStatus(card, status, detail) {
-  if (!card) return;
-  let el = card.querySelector('.agent-action-fs-result');
-  if (!el) {
-    el = document.createElement('div');
-    el.className = 'agent-action-fs-result';
-    card.querySelector('.agent-action-btns')?.before(el);
-  }
-  el.className = `agent-action-fs-result fs-result--${status}`;
-  el.innerHTML = status === 'saved'
-    ? `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Salvo em <strong>${escapeHtml(FsAgent.getRootPath())}/${escapeHtml(detail)}</strong>`
-    : `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Falha ao salvar localmente: ${escapeHtml(detail)}`;
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -1837,14 +1419,6 @@ async function loadConversation(id) {
         renderPreviewPane();
       }
     }
-
-    if (state.agentModeEnabled) {
-      const actRes = await fetch(`${API.BASE}/api/agent/actions/${id}`);
-      if (actRes.ok) {
-        const actions = await actRes.json();
-        renderAgentActions(actions);
-      }
-    }
   } catch (err) { console.error('Erro ao carregar conversa:', err); }
 }
 
@@ -1916,7 +1490,6 @@ function newConversation() {
   clearAttachPreview();
   showWelcome();
   closeCodePanel();
-  el.agentActionsPanel.hidden = true;
   document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
   if (window.innerWidth <= 768) el.sidebar.classList.remove('open');
 }
@@ -1975,7 +1548,6 @@ async function sendMessage() {
     images,
     webSearch:    state.webSearchEnabled,
     codeMode:     state.codeModeEnabled,
-    agentMode:    state.agentModeEnabled,
     githubRepoId: state.activeGithubRepo?.id ?? null,
     ...(state.activeProjectId && { projectId: state.activeProjectId }),
     ...(!isNew && state.conversationId && { conversationId: state.conversationId }),

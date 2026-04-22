@@ -205,23 +205,52 @@ function renderPreviewPane() {
     });
 
     const previewNavigationGuard = `<script>(function(){
-  document.addEventListener('click', function(ev) {
-    const link = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
-    if (!link) return;
+  const isExternalHref = (href) => /^(https?:)?\/\//i.test(href);
+  const getHref = (link) => (link && link.getAttribute ? (link.getAttribute('href') || '').trim() : '');
 
-    const href = (link.getAttribute('href') || '').trim();
-    if (!href || href.startsWith('#') || /^javascript:/i.test(href)) return;
+  document.addEventListener('click', function(ev) {
+    const target = ev.target && ev.target.closest ? ev.target.closest('a[href], button, [role="button"], [onclick], [data-href], [data-url]') : null;
+    if (!target) return;
+
+    const link = target.closest ? target.closest('a[href]') : null;
+    const href = getHref(link);
 
     ev.preventDefault();
-    const lowerHref = href.toLowerCase();
-    if (lowerHref.startsWith('http://') || lowerHref.startsWith('https://')) {
+    ev.stopImmediatePropagation();
+
+    if (link && href && !href.startsWith('#') && !/^javascript:/i.test(href) && isExternalHref(href)) {
       window.open(href, '_blank', 'noopener,noreferrer');
     }
   }, true);
 
   document.addEventListener('submit', function(ev) {
     ev.preventDefault();
+    ev.stopImmediatePropagation();
   }, true);
+
+  document.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') {
+      const formControl = ev.target && ev.target.closest ? ev.target.closest('form') : null;
+      if (formControl) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+      }
+    }
+  }, true);
+
+  const originalOpen = window.open.bind(window);
+
+  window.open = function(url, target, features) {
+    const targetHref = String(url || '').trim();
+    if (!targetHref || targetHref.startsWith('#') || /^javascript:/i.test(targetHref)) return null;
+    if (isExternalHref(targetHref)) {
+      return originalOpen(targetHref, target || '_blank', features || 'noopener,noreferrer');
+    }
+    return null;
+  };
+
+  history.pushState = function() {};
+  history.replaceState = function() {};
 })();</script>`;
 
     if (html.includes('</body>')) {
@@ -421,7 +450,7 @@ async function downloadProjectZip() {
     const res = await fetch(`${API.BASE}/api/code/session/${state.conversationId}/download/zip`);
     if (!res.ok) return;
     const blob = await res.blob();
-    triggerDownload(blob, `kyronai-${state.conversationId.slice(0, 8)}.zip`);
+    triggerDownload(blob, `kytrionyx-${state.conversationId.slice(0, 8)}.zip`);
   } catch (err) {
     console.error('Erro ao baixar ZIP:', err);
   }

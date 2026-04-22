@@ -77,24 +77,9 @@ function setupEventListeners() {
 
   el.btnCodeMode.addEventListener('click', () => {
     state.codeModeEnabled = !state.codeModeEnabled;
-    if (state.codeModeEnabled && state.agentModeEnabled) {
-      state.agentModeEnabled = false;
-      el.btnAgentMode.classList.remove('active');
-    }
     el.btnCodeMode.classList.toggle('active', state.codeModeEnabled);
     el.btnCodeMode.title = state.codeModeEnabled ? 'Modo Código ativo' : 'Ativar Modo Código';
     if (state.codeModeEnabled && state.conversationId) loadCodeSession();
-  });
-
-  el.btnAgentMode.addEventListener('click', () => {
-    state.agentModeEnabled = !state.agentModeEnabled;
-    if (state.agentModeEnabled && state.codeModeEnabled) {
-      state.codeModeEnabled = false;
-      el.btnCodeMode.classList.remove('active');
-    }
-    el.btnAgentMode.classList.toggle('active', state.agentModeEnabled);
-    el.btnAgentMode.title = state.agentModeEnabled ? 'Modo Agente ativo' : 'Ativar Modo Agente';
-    updateFsBarVisibility();
   });
 
   el.btnGithub.addEventListener('click', openGithubModal);
@@ -102,7 +87,9 @@ function setupEventListeners() {
   el.codePanelClose.addEventListener('click', closeCodePanel);
   el.codePanelDownloadZip.addEventListener('click', downloadProjectZip);
   el.codePanelDownloadFile.addEventListener('click', downloadCurrentFile);
-  el.codeDiffToggle.addEventListener('click', toggleDiffView);
+  el.codeDiffToggle.addEventListener('click', () => {
+    if (typeof globalThis.toggleDiffView === 'function') globalThis.toggleDiffView();
+  });
 
   el.githubModalClose.addEventListener('click', closeGithubModal);
   el.githubBackdrop.addEventListener('click', e => {
@@ -152,9 +139,11 @@ function setupEventListeners() {
     if (e.target === el.projectBackdrop) closeProjectModal();
   });
   el.projectFormCancel.addEventListener('click', closeProjectModal);
-  el.projectFormSave.addEventListener('click', saveProject);
+  el.projectFormSave.addEventListener('click', () => {
+    if (typeof globalThis.saveProject === 'function') globalThis.saveProject();
+  });
   el.projectNameInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') saveProject();
+    if (e.key === 'Enter' && typeof globalThis.saveProject === 'function') globalThis.saveProject();
   });
   el.btnProjectAddFile.addEventListener('click', () => el.projectFileInput.click());
   el.projectFileInput.addEventListener('change', handleProjectFileUpload);
@@ -165,9 +154,15 @@ function setupEventListeners() {
   el.projectTextCancel.addEventListener('click', () => {
     el.projectTextAdd.hidden = true;
   });
-  el.projectTextSave.addEventListener('click', saveProjectText);
-  el.btnProjectNewChat.addEventListener('click', startProjectChat);
-  el.btnProjectDelete.addEventListener('click', handleDeleteCurrentProject);
+  el.projectTextSave.addEventListener('click', () => {
+    if (typeof globalThis.saveProjectText === 'function') globalThis.saveProjectText();
+  });
+  el.btnProjectNewChat.addEventListener('click', () => {
+    if (typeof globalThis.startProjectChat === 'function') globalThis.startProjectChat();
+  });
+  el.btnProjectDelete.addEventListener('click', () => {
+    if (typeof globalThis.handleDeleteCurrentProject === 'function') globalThis.handleDeleteCurrentProject();
+  });
   el.btnClearProject.addEventListener('click', clearProjectContext);
 
   el.searchInput.addEventListener('input', filterHistory);
@@ -185,7 +180,6 @@ async function setupAllModules() {
   setupCodePanelResize();
   configureMarked();
   loadPreferences();
-  setupFsAgent();
   setupSectionToggles();
   await Promise.all([loadModels(), loadHistory(), loadProjects()]);
 }
